@@ -3,6 +3,7 @@ import sys
 import os
 import re
 import argparse
+import shutil
 from io import StringIO
 
 class CatConfig:
@@ -169,11 +170,57 @@ def parseDrawing(f, cat):
         if len(cat.CAT[len(cat.CAT)-1].strip()) == 0:
             cat.CAT.remove(len(cat.CAT)-1)
 
+def get_term_size_pipe():
+    try:
+        with open('/dev/tty') as tty:
+            import termios
+            import fcntl
+            import struct
+            size = struct.unpack('hh', fcntl.ioctl(tty.fileno(), termios.TIOCGWINSZ, '1234'))
+            return size[1], size[0]  # (columns, lines)
+    except:
+        pass
+
+    # Try using stty command
+    try:
+        process = subprocess.Popen(['stty', 'size'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        output, error = process.communicate()
+        if process.returncode == 0:
+            rows, columns = map(int, output.decode().split())
+            return columns, rows
+    except:
+        pass
+
+    # Try environment variables
+    try:
+        columns = os.environ.get('COLUMNS')
+        rows = os.environ.get('LINES')
+        if columns and rows:
+            return int(columns), int(rows)
+    except:
+        pass
+
+    # Try using shutil as a fallback (might not work with pipes)
+    try:
+        size = shutil.get_terminal_size()
+        return size.columns, size.lines
+    except:
+        pass
+
+    # Return a sensible default if all else fails
+    return (80, 24)
+
 def main():
     global catFile
     global input
     cat = CatConfig()
-    terminalWidth, terminalHeight = os.get_terminal_size()
+    terminalWidth = 0
+    terminalHeight = 0
+    if sys.stdout.isatty == True:
+        terminalWidth, terminalHeight = os.get_terminal_size()
+    else:
+        terminalWidth, terminalHeight = get_term_size_pipe()
+
     if len(sys.argv) > 1:
         parser = getOptions(sys.argv[1:], cat)
         configFile = parser.config_file
